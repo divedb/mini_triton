@@ -62,7 +62,11 @@ endif()
 
 if(MINITRITON_BUILD_CPP_LOWERING_DRIVER)
     add_executable(mini_triton_lower
-            tools/mtc-lower/main.cpp)
+            tools/mtc-lower/main.cpp
+            tools/mtc-lower/dialect_model.cpp
+            tools/mtc-lower/dialect_parser.cpp
+            tools/mtc-lower/dialect_verifier.cpp
+            tools/mtc-lower/dialect_emitter.cpp)
     target_compile_features(mini_triton_lower PRIVATE cxx_std_17)
 endif()
 
