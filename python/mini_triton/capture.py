@@ -34,13 +34,32 @@ class KernelContextProxy:
     def __init__(self, session: "CaptureSession") -> None:
         self._session = session
 
-    def global_index(self) -> SymbolicValue:
+    def program_id(self, axis: int = 0) -> SymbolicValue:
+        if axis != 0:
+            raise CaptureError(f"program_id currently supports axis=0 only, got axis={axis}")
         return self._session.add_value(
             "program_id",
             "index",
             [],
-            axis=0,
+            axis=axis,
             scope="global",
+        )
+
+    def global_index(self) -> SymbolicValue:
+        return self.program_id(axis=0)
+
+    def arange(self, start: int, end: int) -> SymbolicValue:
+        if not isinstance(start, int) or not isinstance(end, int):
+            raise CaptureError("arange expects integer start/end values")
+        if end <= start:
+            raise CaptureError(f"arange expects end > start, got start={start}, end={end}")
+
+        return self._session.add_value(
+            "arange",
+            "index",
+            [],
+            start=start,
+            end=end,
         )
 
 

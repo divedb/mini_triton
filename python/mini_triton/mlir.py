@@ -87,6 +87,8 @@ class MLIRBuilder:
     def _emit_value(self, value: ValueNode) -> str:
         if value.op == "program_id":
             return self._emit_program_id(value)
+        if value.op == "arange":
+            return self._emit_arange(value)
         if value.op == "cmp_lt":
             return self._emit_cmp_lt(value)
         if value.op == "load":
@@ -94,6 +96,24 @@ class MLIRBuilder:
         if value.op == "add":
             return self._emit_add(value)
         raise MLIREmissionError(f"unsupported IR op: {value.op}")
+
+    def _emit_arange(self, value: ValueNode) -> str:
+        start = int(self._require_attr(value, "start"))
+        end = int(self._require_attr(value, "end"))
+        if end <= start:
+            raise MLIREmissionError(f"invalid arange bounds: start={start}, end={end}")
+
+        base_name = f"{value.name}_base"
+        start_const_name = f"{value.name}_start"
+        return "\n".join(
+            [
+                self._emit_program_id(
+                    ValueNode(name=base_name, op="program_id", dtype="index", attrs=(("axis", "0"), ("scope", "'global'")))
+                ),
+                f"%{start_const_name} = llvm.mlir.constant({start} : i64) : i64",
+                f"%{value.name} = llvm.add %{base_name}, %{start_const_name} : i64",
+            ]
+        )
 
     def _emit_program_id(self, value: ValueNode) -> str:
         axis = self._require_attr(value, "axis")

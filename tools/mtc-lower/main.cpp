@@ -224,6 +224,33 @@ namespace
         throw std::runtime_error("unsupported add dtype: " + value.dtype);
     }
 
+    std::string emit_arange(const DialectValue &value)
+    {
+        const int start = std::stoi(find_attr(value, "start"));
+        const int end = std::stoi(find_attr(value, "end"));
+        if (end <= start)
+        {
+            throw std::runtime_error(
+                "invalid arange bounds: start=" + std::to_string(start) + ", end=" + std::to_string(end));
+        }
+
+        const DialectValue base = {
+            value.name + "_base",
+            "program_id",
+            "index",
+            {},
+            {{"axis", "0"}, {"scope", "'global'"}},
+        };
+
+        const std::string start_name = value.name + "_start";
+
+        std::ostringstream out;
+        out << emit_program_id(base) << "\n";
+        out << "%" << start_name << " = llvm.mlir.constant(" << start << " : i64) : i64\n";
+        out << "%" << value.name << " = llvm.add %" << base.name << ", %" << start_name << " : i64";
+        return out.str();
+    }
+
     std::string emit_value(const DialectValue &value, const std::unordered_map<std::string, DialectArg> &arg_map)
     {
         if (value.op == "program_id")
@@ -237,6 +264,10 @@ namespace
         if (value.op == "load")
         {
             return emit_load(value, arg_map);
+        }
+        if (value.op == "arange")
+        {
+            return emit_arange(value);
         }
         if (value.op == "add")
         {

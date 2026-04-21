@@ -48,3 +48,62 @@ def test_capture_requires_declared_argument_order():
         assert "declared parameter order" in str(exc)
     else:
         raise AssertionError("expected capture to reject argument spec reordering")
+
+
+@kernel(block_size=64)
+def program_id_kernel(ctx, out, n):
+    pid = ctx.program_id(axis=0)
+    active = pid < n
+    out.store(pid, pid, active)
+
+
+def test_program_id_capture_uses_axis_zero():
+    captured = program_id_kernel.capture(
+        out=buffer("index"),
+        n=scalar("index"),
+    )
+    assert "program_id : index (axis=0; scope='global')" in captured.format()
+
+
+@kernel(block_size=32)
+def arange_kernel(ctx, out):
+    idx = ctx.arange(0, 16)
+    out.store(idx, idx)
+
+
+def test_arange_capture_records_bounds():
+    captured = arange_kernel.capture(
+        out=buffer("index"),
+    )
+    rendered = captured.format()
+    assert "arange : index" in rendered
+    assert "start=0" in rendered
+    assert "end=16" in rendered
+
+
+def test_program_id_rejects_nonzero_axis():
+    @kernel(block_size=32)
+    def invalid_axis_kernel(ctx, out):
+        idx = ctx.program_id(axis=1)
+        out.store(idx, idx)
+
+    try:
+        invalid_axis_kernel.capture(out=buffer("index"))
+    except Exception as exc:  # noqa: BLE001
+        assert "axis=0 only" in str(exc)
+    else:
+        raise AssertionError("expected non-zero program_id axis to fail")
+
+
+def test_arange_rejects_invalid_bounds():
+    @kernel(block_size=32)
+    def invalid_arange_kernel(ctx, out):
+        idx = ctx.arange(16, 16)
+        out.store(idx, idx)
+
+    try:
+        invalid_arange_kernel.capture(out=buffer("index"))
+    except Exception as exc:  # noqa: BLE001
+        assert "end > start" in str(exc)
+    else:
+        raise AssertionError("expected invalid arange bounds to fail")

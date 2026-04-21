@@ -322,6 +322,12 @@ set MINITRITON_LLVM_BUILD_DIR=e:\mini_triton\third_party\llvm-project\build
 python examples\compile_vector_add.py
 ```
 
+Run compile + launch directly and print vector-add result:
+
+```powershell
+python examples\vector_add.py
+```
+
 Run Python tests:
 
 ```powershell

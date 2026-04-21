@@ -8,6 +8,13 @@ def add_kernel(ctx, x, y, out, n):
     out.store(idx, x.load(idx, active) + y.load(idx, active), active)
 
 
+@kernel(block_size=64)
+def add_kernel_with_arange(ctx, x, y, out, n):
+    idx = ctx.arange(1, 1025)
+    active = idx < n
+    out.store(idx, x.load(idx, active) + y.load(idx, active), active)
+
+
 def test_vector_add_mlir_is_deterministic():
     captured = add_kernel.capture(
         x=buffer("float32"),
@@ -54,3 +61,15 @@ def test_kernel_can_emit_mlir_directly():
         out=buffer("float32"),
         n=scalar("index"),
     ).startswith("module {")
+
+
+def test_arange_mlir_contains_start_offset_logic():
+    mlir_text = add_kernel_with_arange.emit_mlir(
+        x=buffer("float32"),
+        y=buffer("float32"),
+        out=buffer("float32"),
+        n=scalar("index"),
+    )
+
+    assert "llvm.mlir.constant(1 : i64) : i64" in mlir_text
+    assert "= llvm.add %v0_base, %v0_start : i64" in mlir_text
