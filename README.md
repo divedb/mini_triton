@@ -328,6 +328,12 @@ Run compile + launch directly and print vector-add result:
 python examples\vector_add.py
 ```
 
+Run compile + launch with the `ctx.arange(...)` primitive:
+
+```powershell
+python examples\vector_add_arange.py
+```
+
 Run Python tests:
 
 ```powershell
