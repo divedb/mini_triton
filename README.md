@@ -556,3 +556,14 @@ The next step should be Phase 1 execution only:
 - and record the exact MVP compile strategy decision,
 
 but no source code for the compiler pipeline should be written until that scaffolding is in place.
+
+## Phase 1 Status
+
+Phase 1 scaffolding is now the intended implementation target:
+
+- top-level project metadata in `pyproject.toml`,
+- local LLVM/MLIR path configuration in `CMakeLists.txt` and `cmake/LLVMConfigHelpers.cmake`,
+- a minimal Python package stub in `python/mini_triton/__init__.py`,
+- and the MVP compile strategy decision record in `docs/decisions/0001-mvp-compile-strategy.md`.
+
+The next coding phase after this scaffold is accepted should begin with the Python kernel declaration and symbolic capture path for vector add, not with a larger compiler subsystem.
