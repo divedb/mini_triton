@@ -42,14 +42,26 @@ class DevicePointer:
 class LaunchConfig:
     grid_x: int
     block_x: int
+    grid_y: int = 1
+    grid_z: int = 1
+    block_y: int = 1
+    block_z: int = 1
     shared_mem_bytes: int = 0
     stream: int | None = None
 
     def __post_init__(self) -> None:
         if self.grid_x <= 0:
             raise KernelArgumentError(f"grid_x must be positive, got {self.grid_x}")
+        if self.grid_y <= 0:
+            raise KernelArgumentError(f"grid_y must be positive, got {self.grid_y}")
+        if self.grid_z <= 0:
+            raise KernelArgumentError(f"grid_z must be positive, got {self.grid_z}")
         if self.block_x <= 0:
             raise KernelArgumentError(f"block_x must be positive, got {self.block_x}")
+        if self.block_y <= 0:
+            raise KernelArgumentError(f"block_y must be positive, got {self.block_y}")
+        if self.block_z <= 0:
+            raise KernelArgumentError(f"block_z must be positive, got {self.block_z}")
         if self.shared_mem_bytes < 0:
             raise KernelArgumentError(
                 f"shared_mem_bytes must be non-negative, got {self.shared_mem_bytes}"
@@ -281,11 +293,11 @@ class CtypesCudaDriver:
             self._cuLaunchKernel(
                 function_handle,
                 launch_config.grid_x,
-                1,
-                1,
+                launch_config.grid_y,
+                launch_config.grid_z,
                 launch_config.block_x,
-                1,
-                1,
+                launch_config.block_y,
+                launch_config.block_z,
                 launch_config.shared_mem_bytes,
                 stream_handle,
                 kernel_params_ptr,

@@ -15,6 +15,26 @@ def add_kernel_with_arange(ctx, x, y, out, n):
     out.store(idx, x.load(idx, active) + y.load(idx, active), active)
 
 
+@kernel(block_size=64)
+def add_kernel_with_arange_step(ctx, x, y, out, n):
+    idx = ctx.arange(0, 2048, 2)
+    active = idx < n
+    out.store(idx, x.load(idx, active) + y.load(idx, active), active)
+
+
+@kernel(block_size=64)
+def add_kernel_with_block_scope_arange(ctx, x, y, out, n):
+    idx = ctx.arange(0, 1024, 1, scope="block")
+    active = idx < n
+    out.store(idx, x.load(idx, active) + y.load(idx, active), active)
+
+
+@kernel(block_size=64)
+def axis1_program_id_kernel(ctx, out):
+    idx = ctx.program_id(axis=1)
+    out.store(idx, idx)
+
+
 def test_vector_add_mlir_is_deterministic():
     captured = add_kernel.capture(
         x=buffer("float32"),
@@ -73,3 +93,35 @@ def test_arange_mlir_contains_start_offset_logic():
 
     assert "llvm.mlir.constant(1 : i64) : i64" in mlir_text
     assert "= llvm.add %v0_base, %v0_start : i64" in mlir_text
+
+
+def test_arange_step_mlir_contains_step_multiply_logic():
+    mlir_text = add_kernel_with_arange_step.emit_mlir(
+        x=buffer("float32"),
+        y=buffer("float32"),
+        out=buffer("float32"),
+        n=scalar("index"),
+    )
+
+    assert "llvm.mlir.constant(2 : i64) : i64" in mlir_text
+    assert "= llvm.mul %v0_base, %v0_step : i64" in mlir_text
+    assert "= llvm.add %v0_stepped, %v0_start : i64" in mlir_text
+
+
+def test_block_scope_arange_mlir_uses_tid_scope():
+    mlir_text = add_kernel_with_block_scope_arange.emit_mlir(
+        x=buffer("float32"),
+        y=buffer("float32"),
+        out=buffer("float32"),
+        n=scalar("index"),
+    )
+
+    assert "nvvm.read.ptx.sreg.tid.x" in mlir_text
+    assert "nvvm.read.ptx.sreg.ctaid.x" not in mlir_text
+
+
+def test_axis1_program_id_mlir_uses_y_registers():
+    mlir_text = axis1_program_id_kernel.emit_mlir(out=buffer("index"))
+    assert "nvvm.read.ptx.sreg.ctaid.y" in mlir_text
+    assert "nvvm.read.ptx.sreg.ntid.y" in mlir_text
+    assert "nvvm.read.ptx.sreg.tid.y" in mlir_text

@@ -138,9 +138,23 @@ namespace
     {
         const std::string axis = find_attr(value, "axis");
         const std::string scope = find_attr(value, "scope");
-        if (axis != "0")
+        if (axis != "0" && axis != "1")
         {
             throw std::runtime_error("unsupported program_id axis: " + axis);
+        }
+        const std::string axis_suffix = axis == "0" ? "x" : "y";
+        if (scope == "'block'" || scope == "block")
+        {
+            const std::string thread_id_name = value.name + "_thread_id";
+            const std::string thread_id_i64_name = thread_id_name + "_i64";
+            const std::string zero_name = value.name + "_zero";
+
+            std::ostringstream out;
+            out << "%" << thread_id_name << " = nvvm.read.ptx.sreg.tid." << axis_suffix << " : i32\n";
+            out << "%" << thread_id_i64_name << " = llvm.sext %" << thread_id_name << " : i32 to i64\n";
+            out << "%" << zero_name << " = llvm.mlir.constant(0 : i64) : i64\n";
+            out << "%" << value.name << " = llvm.add %" << thread_id_i64_name << ", %" << zero_name << " : i64";
+            return out.str();
         }
         if (scope != "'global'" && scope != "global")
         {
@@ -156,9 +170,9 @@ namespace
         const std::string block_base_name = value.name + "_block_base";
 
         std::ostringstream out;
-        out << "%" << block_id_name << " = nvvm.read.ptx.sreg.ctaid.x : i32\n";
-        out << "%" << block_dim_name << " = nvvm.read.ptx.sreg.ntid.x : i32\n";
-        out << "%" << thread_id_name << " = nvvm.read.ptx.sreg.tid.x : i32\n";
+        out << "%" << block_id_name << " = nvvm.read.ptx.sreg.ctaid." << axis_suffix << " : i32\n";
+        out << "%" << block_dim_name << " = nvvm.read.ptx.sreg.ntid." << axis_suffix << " : i32\n";
+        out << "%" << thread_id_name << " = nvvm.read.ptx.sreg.tid." << axis_suffix << " : i32\n";
         out << "%" << block_id_i64_name << " = llvm.sext %" << block_id_name << " : i32 to i64\n";
         out << "%" << block_dim_i64_name << " = llvm.sext %" << block_dim_name << " : i32 to i64\n";
         out << "%" << thread_id_i64_name << " = llvm.sext %" << thread_id_name << " : i32 to i64\n";
@@ -228,10 +242,16 @@ namespace
     {
         const int start = std::stoi(find_attr(value, "start"));
         const int end = std::stoi(find_attr(value, "end"));
+        const int step = std::stoi(find_attr(value, "step"));
+        const std::string scope = find_attr(value, "scope");
         if (end <= start)
         {
             throw std::runtime_error(
                 "invalid arange bounds: start=" + std::to_string(start) + ", end=" + std::to_string(end));
+        }
+        if (step <= 0)
+        {
+            throw std::runtime_error("invalid arange step: step=" + std::to_string(step));
         }
 
         const DialectValue base = {
@@ -239,15 +259,25 @@ namespace
             "program_id",
             "index",
             {},
-            {{"axis", "0"}, {"scope", "'global'"}},
+            {{"axis", "0"}, {"scope", scope}},
         };
 
         const std::string start_name = value.name + "_start";
+        const std::string step_name = value.name + "_step";
+        const std::string stepped_name = value.name + "_stepped";
 
         std::ostringstream out;
         out << emit_program_id(base) << "\n";
         out << "%" << start_name << " = llvm.mlir.constant(" << start << " : i64) : i64\n";
-        out << "%" << value.name << " = llvm.add %" << base.name << ", %" << start_name << " : i64";
+        if (step == 1)
+        {
+            out << "%" << value.name << " = llvm.add %" << base.name << ", %" << start_name << " : i64";
+            return out.str();
+        }
+
+        out << "%" << step_name << " = llvm.mlir.constant(" << step << " : i64) : i64\n";
+        out << "%" << stepped_name << " = llvm.mul %" << base.name << ", %" << step_name << " : i64\n";
+        out << "%" << value.name << " = llvm.add %" << stepped_name << ", %" << start_name << " : i64";
         return out.str();
     }
 

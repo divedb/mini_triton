@@ -100,26 +100,56 @@ class MLIRBuilder:
     def _emit_arange(self, value: ValueNode) -> str:
         start = int(self._require_attr(value, "start"))
         end = int(self._require_attr(value, "end"))
+        step = int(self._require_attr(value, "step"))
+        scope = self._require_attr(value, "scope")
+        if step <= 0:
+            raise MLIREmissionError(f"invalid arange step: step={step}")
         if end <= start:
             raise MLIREmissionError(f"invalid arange bounds: start={start}, end={end}")
 
         base_name = f"{value.name}_base"
         start_const_name = f"{value.name}_start"
-        return "\n".join(
+        step_const_name = f"{value.name}_step"
+        stepped_name = f"{value.name}_stepped"
+
+        arange_lines = [
+            self._emit_program_id(
+                ValueNode(name=base_name, op="program_id", dtype="index", attrs=(("axis", "0"), ("scope", scope)))
+            ),
+            f"%{start_const_name} = llvm.mlir.constant({start} : i64) : i64",
+        ]
+
+        if step == 1:
+            arange_lines.append(f"%{value.name} = llvm.add %{base_name}, %{start_const_name} : i64")
+            return "\n".join(arange_lines)
+
+        arange_lines.extend(
             [
-                self._emit_program_id(
-                    ValueNode(name=base_name, op="program_id", dtype="index", attrs=(("axis", "0"), ("scope", "'global'")))
-                ),
-                f"%{start_const_name} = llvm.mlir.constant({start} : i64) : i64",
-                f"%{value.name} = llvm.add %{base_name}, %{start_const_name} : i64",
+                f"%{step_const_name} = llvm.mlir.constant({step} : i64) : i64",
+                f"%{stepped_name} = llvm.mul %{base_name}, %{step_const_name} : i64",
+                f"%{value.name} = llvm.add %{stepped_name}, %{start_const_name} : i64",
             ]
         )
+        return "\n".join(arange_lines)
 
     def _emit_program_id(self, value: ValueNode) -> str:
         axis = self._require_attr(value, "axis")
         scope = self._require_attr(value, "scope")
-        if axis != "0":
+        if axis not in {"0", "1"}:
             raise MLIREmissionError(f"unsupported program_id axis: {axis}")
+        axis_suffix = "x" if axis == "0" else "y"
+        if scope == "'block'":
+            thread_id_name = f"{value.name}_thread_id"
+            thread_id_i64_name = f"{thread_id_name}_i64"
+            zero_name = f"{value.name}_zero"
+            return "\n".join(
+                [
+                    f"%{thread_id_name} = nvvm.read.ptx.sreg.tid.{axis_suffix} : i32",
+                    f"%{thread_id_i64_name} = llvm.sext %{thread_id_name} : i32 to i64",
+                    f"%{zero_name} = llvm.mlir.constant(0 : i64) : i64",
+                    f"%{value.name} = llvm.add %{thread_id_i64_name}, %{zero_name} : i64",
+                ]
+            )
         if scope != "'global'":
             raise MLIREmissionError(f"unsupported program_id scope: {scope}")
 
@@ -132,9 +162,9 @@ class MLIRBuilder:
         block_base_name = f"{value.name}_block_base"
         return "\n".join(
             [
-                f"%{block_id_name} = nvvm.read.ptx.sreg.ctaid.x : i32",
-                f"%{block_dim_name} = nvvm.read.ptx.sreg.ntid.x : i32",
-                f"%{thread_id_name} = nvvm.read.ptx.sreg.tid.x : i32",
+                f"%{block_id_name} = nvvm.read.ptx.sreg.ctaid.{axis_suffix} : i32",
+                f"%{block_dim_name} = nvvm.read.ptx.sreg.ntid.{axis_suffix} : i32",
+                f"%{thread_id_name} = nvvm.read.ptx.sreg.tid.{axis_suffix} : i32",
                 f"%{block_id_i64_name} = llvm.sext %{block_id_name} : i32 to i64",
                 f"%{block_dim_i64_name} = llvm.sext %{block_dim_name} : i32 to i64",
                 f"%{thread_id_i64_name} = llvm.sext %{thread_id_name} : i32 to i64",

@@ -24,7 +24,11 @@ def test_launch_config_rounds_up_grid_size():
     config = LaunchConfig.for_num_elements(257, 128)
 
     assert config.grid_x == 3
+    assert config.grid_y == 1
+    assert config.grid_z == 1
     assert config.block_x == 128
+    assert config.block_y == 1
+    assert config.block_z == 1
     assert config.shared_mem_bytes == 0
     assert config.stream is None
 
@@ -93,7 +97,7 @@ def test_load_and_launch_kernel_with_injected_driver(tmp_path: Path):
     driver = _FakeKernelDriver()
 
     kernel = load_kernel(ptx_path, "add_kernel", driver=driver)
-    config = LaunchConfig.for_num_elements(65, 64)
+    config = LaunchConfig(grid_x=2, grid_y=3, block_x=64, block_y=2)
     arg_specs = {
         "x": buffer("float32"),
         "y": buffer("float32"),
@@ -120,7 +124,11 @@ def test_load_and_launch_kernel_with_injected_driver(tmp_path: Path):
         {
             "function_handle": "function:add_kernel",
             "grid_x": 2,
+            "grid_y": 3,
+            "grid_z": 1,
             "block_x": 64,
+            "block_y": 2,
+            "block_z": 1,
             "shared_mem_bytes": 0,
             "arg_names": ("x", "y", "out", "n"),
             "scalar_n": 65,
@@ -148,7 +156,11 @@ class _FakeKernelDriver:
             {
                 "function_handle": str(function_handle),
                 "grid_x": launch_config.grid_x,
+                "grid_y": launch_config.grid_y,
+                "grid_z": launch_config.grid_z,
                 "block_x": launch_config.block_x,
+                "block_y": launch_config.block_y,
+                "block_z": launch_config.block_z,
                 "shared_mem_bytes": launch_config.shared_mem_bytes,
                 "arg_names": arguments.names,
                 "scalar_n": arguments.storage[-1].value,

@@ -71,6 +71,12 @@ def arange_kernel(ctx, out):
     out.store(idx, idx)
 
 
+@kernel(block_size=32)
+def arange_step_kernel(ctx, out):
+    idx = ctx.arange(0, 16, 2)
+    out.store(idx, idx)
+
+
 def test_arange_capture_records_bounds():
     captured = arange_kernel.capture(
         out=buffer("index"),
@@ -79,20 +85,30 @@ def test_arange_capture_records_bounds():
     assert "arange : index" in rendered
     assert "start=0" in rendered
     assert "end=16" in rendered
+    assert "step=1" in rendered
 
 
-def test_program_id_rejects_nonzero_axis():
+def test_arange_capture_records_step():
+    captured = arange_step_kernel.capture(
+        out=buffer("index"),
+    )
+    rendered = captured.format()
+    assert "arange : index" in rendered
+    assert "step=2" in rendered
+
+
+def test_program_id_rejects_out_of_range_axis_legacy_case():
     @kernel(block_size=32)
     def invalid_axis_kernel(ctx, out):
-        idx = ctx.program_id(axis=1)
+        idx = ctx.program_id(axis=3)
         out.store(idx, idx)
 
     try:
         invalid_axis_kernel.capture(out=buffer("index"))
     except Exception as exc:  # noqa: BLE001
-        assert "axis=0 only" in str(exc)
+        assert "axis=0 or axis=1 only" in str(exc)
     else:
-        raise AssertionError("expected non-zero program_id axis to fail")
+        raise AssertionError("expected out-of-range program_id axis to fail")
 
 
 def test_arange_rejects_invalid_bounds():
@@ -107,3 +123,54 @@ def test_arange_rejects_invalid_bounds():
         assert "end > start" in str(exc)
     else:
         raise AssertionError("expected invalid arange bounds to fail")
+
+
+def test_arange_rejects_invalid_step():
+    @kernel(block_size=32)
+    def invalid_arange_step_kernel(ctx, out):
+        idx = ctx.arange(0, 16, 0)
+        out.store(idx, idx)
+
+    try:
+        invalid_arange_step_kernel.capture(out=buffer("index"))
+    except Exception as exc:  # noqa: BLE001
+        assert "step > 0" in str(exc)
+    else:
+        raise AssertionError("expected invalid arange step to fail")
+
+
+@kernel(block_size=32)
+def block_scope_kernel(ctx, out):
+    idx = ctx.arange(0, 32, 1, scope="block")
+    out.store(idx, idx)
+
+
+def test_arange_block_scope_is_captured():
+    captured = block_scope_kernel.capture(out=buffer("index"))
+    rendered = captured.format()
+    assert "scope='block'" in rendered
+
+
+@kernel(block_size=32)
+def axis1_kernel(ctx, out):
+    idx = ctx.program_id(axis=1)
+    out.store(idx, idx)
+
+
+def test_program_id_axis1_is_captured():
+    captured = axis1_kernel.capture(out=buffer("index"))
+    assert "program_id : index (axis=1; scope='global')" in captured.format()
+
+
+def test_program_id_rejects_axis_out_of_range():
+    @kernel(block_size=32)
+    def invalid_axis2_kernel(ctx, out):
+        idx = ctx.program_id(axis=2)
+        out.store(idx, idx)
+
+    try:
+        invalid_axis2_kernel.capture(out=buffer("index"))
+    except Exception as exc:  # noqa: BLE001
+        assert "axis=0 or axis=1 only" in str(exc)
+    else:
+        raise AssertionError("expected out-of-range program_id axis to fail")

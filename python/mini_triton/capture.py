@@ -34,9 +34,11 @@ class KernelContextProxy:
     def __init__(self, session: "CaptureSession") -> None:
         self._session = session
 
-    def program_id(self, axis: int = 0) -> SymbolicValue:
-        if axis != 0:
-            raise CaptureError(f"program_id currently supports axis=0 only, got axis={axis}")
+    def program_id(self, axis: int = 0, scope: str = "global") -> SymbolicValue:
+        if axis not in {0, 1}:
+            raise CaptureError(f"program_id currently supports axis=0 or axis=1 only, got axis={axis}")
+        if scope not in {"global", "block"}:
+            raise CaptureError(f"program_id currently supports scope='global' or scope='block', got scope={scope!r}")
         return self._session.add_value(
             "program_id",
             "index",
@@ -46,13 +48,20 @@ class KernelContextProxy:
         )
 
     def global_index(self) -> SymbolicValue:
-        return self.program_id(axis=0)
+        return self.program_id(axis=0, scope="global")
 
-    def arange(self, start: int, end: int) -> SymbolicValue:
-        if not isinstance(start, int) or not isinstance(end, int):
-            raise CaptureError("arange expects integer start/end values")
+    def lane_id(self) -> SymbolicValue:
+        return self.program_id(axis=0, scope="block")
+
+    def arange(self, start: int, end: int, step: int = 1, scope: str = "global") -> SymbolicValue:
+        if not isinstance(start, int) or not isinstance(end, int) or not isinstance(step, int):
+            raise CaptureError("arange expects integer start/end/step values")
+        if step <= 0:
+            raise CaptureError(f"arange expects step > 0, got step={step}")
         if end <= start:
             raise CaptureError(f"arange expects end > start, got start={start}, end={end}")
+        if scope not in {"global", "block"}:
+            raise CaptureError(f"arange currently supports scope='global' or scope='block', got scope={scope!r}")
 
         return self._session.add_value(
             "arange",
@@ -60,6 +69,8 @@ class KernelContextProxy:
             [],
             start=start,
             end=end,
+            step=step,
+            scope=scope,
         )
 
 

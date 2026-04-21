@@ -334,6 +334,18 @@ Run compile + launch with the `ctx.arange(...)` primitive:
 python examples\vector_add_arange.py
 ```
 
+Run compile + launch with `ctx.arange(..., step=2)`:
+
+```powershell
+python examples\vector_add_arange_step.py
+```
+
+Run compile + launch with block-scope indexing (`scope="block"`):
+
+```powershell
+python examples\vector_add_block_scope.py
+```
+
 Run Python tests:
 
 ```powershell
