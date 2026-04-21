@@ -24,6 +24,10 @@ option(MINITRITON_ENABLE_TOOLCHAIN_CHECK
        "Validate the configured LLVM/MLIR build tree and tools"
        OFF)
 
+option(MINITRITON_BUILD_CPP_LOWERING_DRIVER
+    "Build the C++ lowering driver used by Python to produce PTX"
+    ON)
+
 mini_triton_infer_llvm_cmake_dirs(
     "${MINITRITON_LLVM_BUILD_DIR}"
     MINITRITON_INFERRED_LLVM_DIR
@@ -56,5 +60,11 @@ if(MINITRITON_ENABLE_TOOLCHAIN_CHECK)
       LLVM_BUILD_DIR "${MINITRITON_LLVM_BUILD_DIR}")
 endif()
 
+if(MINITRITON_BUILD_CPP_LOWERING_DRIVER)
+    add_executable(mini_triton_lower
+            tools/mtc-lower/main.cpp)
+    target_compile_features(mini_triton_lower PRIVATE cxx_std_17)
+endif()
+
 add_custom_target(mini_triton_scaffold ALL
-    COMMENT "Phase 1 scaffold only; compiler and runtime sources are added in later phases")
+        COMMENT "mini_triton scaffold")

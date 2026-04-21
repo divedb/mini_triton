@@ -1,0 +1,2 @@
+[console_scripts]
+mini-triton = mini_triton.cli:main

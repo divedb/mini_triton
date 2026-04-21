@@ -9,6 +9,8 @@ from mini_triton import (
     DevicePointer,
     KernelArgumentError,
     LaunchConfig,
+    CtypesCudaDriver,
+    CudaDriverError,
     RuntimeUnavailableError,
     buffer,
     load_kernel,
@@ -69,11 +71,18 @@ def test_marshal_kernel_arguments_requires_declared_order():
         )
 
 
-def test_load_kernel_requires_driver_when_cuda_binding_is_unavailable(tmp_path: Path):
+def test_load_kernel_requires_driver_when_cuda_binding_is_unavailable(tmp_path: Path, monkeypatch):
     ptx_path = tmp_path / "kernel.ptx"
     ptx_path.write_text(".visible .entry add_kernel() { ret; }\n", encoding="utf-8")
 
-    with pytest.raises(RuntimeUnavailableError, match="kernel driver implementation is required"):
+    from mini_triton import runtime
+
+    def _raise_unavailable():
+        raise RuntimeUnavailableError("not available")
+
+    monkeypatch.setattr(runtime, "_load_nvcuda_library", _raise_unavailable)
+
+    with pytest.raises(RuntimeUnavailableError, match="not available"):
         load_kernel(ptx_path, "add_kernel")
 
 
@@ -145,3 +154,147 @@ class _FakeKernelDriver:
                 "scalar_n": arguments.storage[-1].value,
             }
         )
+
+
+def test_ctypes_cuda_driver_load_and_launch_with_fake_cuda_library():
+    fake_library = _FakeCudaLibrary()
+    driver = CtypesCudaDriver(library=fake_library)
+
+    module = driver.load_module(".visible .entry add_kernel() { ret; }\n")
+    function = driver.get_function(module, "add_kernel")
+    marshaled = marshal_kernel_arguments(
+        {
+            "x": buffer("float32"),
+            "y": buffer("float32"),
+            "out": buffer("float32"),
+            "n": scalar("index"),
+        },
+        {"x": 0x1000, "y": 0x2000, "out": 0x3000, "n": 33},
+    )
+    driver.launch_kernel(function, launch_config=LaunchConfig.for_num_elements(33, 32), arguments=marshaled)
+
+    assert fake_library.calls[0] == "cuInit"
+    assert "cuModuleLoadDataEx" in fake_library.calls
+    assert "cuModuleGetFunction" in fake_library.calls
+    assert "cuLaunchKernel" in fake_library.calls
+
+
+def test_ctypes_cuda_driver_raises_error_name_from_cuda():
+    fake_library = _FakeCudaLibrary(module_get_function_status=201)
+    driver = CtypesCudaDriver(library=fake_library)
+    module = driver.load_module(".visible .entry add_kernel() { ret; }\n")
+
+    with pytest.raises(CudaDriverError, match="CUDA_ERROR_INVALID_CONTEXT"):
+        driver.get_function(module, "add_kernel")
+
+
+class _FakeCudaLibrary:
+    def __init__(
+        self,
+        *,
+        init_status: int = 0,
+        module_load_status: int = 0,
+        module_get_function_status: int = 0,
+        launch_status: int = 0,
+    ) -> None:
+        self.init_status = init_status
+        self.module_load_status = module_load_status
+        self.module_get_function_status = module_get_function_status
+        self.launch_status = launch_status
+        self.calls: list[str] = []
+
+        self.cuInit = self._cu_init
+        self.cuDeviceGet = self._cu_device_get
+        self.cuCtxCreate_v2 = self._cu_ctx_create
+        self.cuMemAlloc_v2 = self._cu_mem_alloc
+        self.cuMemFree_v2 = self._cu_mem_free
+        self.cuMemcpyHtoD_v2 = self._cu_memcpy_htod
+        self.cuMemcpyDtoH_v2 = self._cu_memcpy_dtoh
+        self.cuCtxSynchronize = self._cu_ctx_synchronize
+        self.cuModuleLoadDataEx = self._cu_module_load_data_ex
+        self.cuModuleGetFunction = self._cu_module_get_function
+        self.cuLaunchKernel = self._cu_launch_kernel
+        self.cuGetErrorName = self._cu_get_error_name
+        self._memory: dict[int, bytes] = {}
+        self._next_address = 0x100000
+
+    def _cu_init(self, _flags):
+        self.calls.append("cuInit")
+        return self.init_status
+
+    def _cu_device_get(self, device_ptr, _ordinal):
+        self.calls.append("cuDeviceGet")
+        ctypes.cast(device_ptr, ctypes.POINTER(ctypes.c_int))[0] = ctypes.c_int(0)
+        return 0
+
+    def _cu_ctx_create(self, context_ptr, _flags, _device):
+        self.calls.append("cuCtxCreate")
+        ctypes.cast(context_ptr, ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.c_void_p(0xCAFE)
+        return 0
+
+    def _cu_module_load_data_ex(self, module_ptr, _image, _num_options, _options, _option_values):
+        self.calls.append("cuModuleLoadDataEx")
+        if self.module_load_status == 0:
+            ctypes.cast(module_ptr, ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.c_void_p(0xAA01)
+        return self.module_load_status
+
+    def _cu_mem_alloc(self, ptr, size):
+        self.calls.append("cuMemAlloc")
+        address = self._next_address
+        self._next_address += max(int(size), 1)
+        self._memory[address] = b"\x00" * int(size)
+        ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint64))[0] = ctypes.c_uint64(address)
+        return 0
+
+    def _cu_mem_free(self, ptr):
+        self.calls.append("cuMemFree")
+        self._memory.pop(int(ptr), None)
+        return 0
+
+    def _cu_memcpy_htod(self, dst, src, size):
+        self.calls.append("cuMemcpyHtoD")
+        data = ctypes.string_at(src, int(size))
+        self._memory[int(dst)] = data
+        return 0
+
+    def _cu_memcpy_dtoh(self, dst, src, size):
+        self.calls.append("cuMemcpyDtoH")
+        data = self._memory.get(int(src), b"\x00" * int(size))
+        ctypes.memmove(dst, data, int(size))
+        return 0
+
+    def _cu_ctx_synchronize(self):
+        self.calls.append("cuCtxSynchronize")
+        return 0
+
+    def _cu_module_get_function(self, function_ptr, _module, _name):
+        self.calls.append("cuModuleGetFunction")
+        if self.module_get_function_status == 0:
+            ctypes.cast(function_ptr, ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.c_void_p(0xBB02)
+        return self.module_get_function_status
+
+    def _cu_launch_kernel(
+        self,
+        _function,
+        _grid_x,
+        _grid_y,
+        _grid_z,
+        _block_x,
+        _block_y,
+        _block_z,
+        _shared_mem,
+        _stream,
+        _kernel_params,
+        _extra,
+    ):
+        self.calls.append("cuLaunchKernel")
+        return self.launch_status
+
+    def _cu_get_error_name(self, code, out_name):
+        self.calls.append("cuGetErrorName")
+        mapping = {
+            201: b"CUDA_ERROR_INVALID_CONTEXT",
+        }
+        name = mapping.get(code, b"CUDA_ERROR_UNKNOWN")
+        ctypes.cast(out_name, ctypes.POINTER(ctypes.c_char_p))[0] = ctypes.c_char_p(name)
+        return 0

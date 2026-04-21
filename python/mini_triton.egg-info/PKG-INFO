@@ -1,3 +1,17 @@
+Metadata-Version: 2.4
+Name: mini-triton
+Version: 0.1.0
+Summary: Clean-room CUDA kernel compiler scaffold built around Python and MLIR
+Author: mini_triton developers
+License: Proprietary
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Topic :: Software Development :: Compilers
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
+
 # mini_triton
 
 ## Project Framing

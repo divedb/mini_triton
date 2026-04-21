@@ -1,6 +1,7 @@
 """Public package surface for the mini_triton Phase 2 frontend scaffold."""
 
 from .api import buffer, kernel, scalar
+from .cache import CachedCompilation, compile_with_cache
 from .compiler import (
 	CompilationPlan,
 	CompilationRun,
@@ -12,6 +13,8 @@ from .capture import CaptureError
 from .ir import ArgSpec, KernelIR
 from .mlir import MLIREmissionError, emit_mlir
 from .runtime import (
+	CtypesCudaDriver,
+	CudaDriverError,
 	DevicePointer,
 	KernelArgumentError,
 	LaunchConfig,
@@ -27,9 +30,12 @@ from .runtime import (
 __all__ = [
 	"ArgSpec",
 	"CaptureError",
+	"CachedCompilation",
 	"CompilationPlan",
 	"CompilationRun",
 	"CompilerConfigError",
+	"CtypesCudaDriver",
+	"CudaDriverError",
 	"DevicePointer",
 	"KernelIR",
 	"KernelArgumentError",
@@ -41,6 +47,7 @@ __all__ = [
 	"RuntimeUnavailableError",
 	"__version__",
 	"buffer",
+	"compile_with_cache",
 	"emit_mlir",
 	"execute_compilation_plan",
 	"kernel",

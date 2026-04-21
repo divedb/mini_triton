@@ -5,6 +5,7 @@ from inspect import Signature, signature
 from pathlib import Path
 from typing import Any, Callable
 
+from .cache import CachedCompilation, compile_with_cache
 from .compiler import CompilationPlan, CompilationRun, create_compilation_plan, execute_compilation_plan
 from .capture import BufferProxy, CaptureError, CaptureSession, KernelContextProxy, ScalarProxy
 from .ir import ArgSpec, KernelIR
@@ -68,6 +69,7 @@ class Kernel:
         output_dir: str | Path,
         *,
         llvm_build_dir: str | Path | None = None,
+        cpp_lowering_driver: str | Path | None = None,
         cuda_arch: str = "sm_80",
         **arg_specs: ArgSpec,
     ) -> CompilationPlan:
@@ -75,6 +77,7 @@ class Kernel:
             self.capture(**arg_specs),
             output_dir=output_dir,
             llvm_build_dir=llvm_build_dir,
+            cpp_lowering_driver=cpp_lowering_driver,
             cuda_arch=cuda_arch,
         )
 
@@ -83,16 +86,35 @@ class Kernel:
         output_dir: str | Path,
         *,
         llvm_build_dir: str | Path | None = None,
+        cpp_lowering_driver: str | Path | None = None,
         cuda_arch: str = "sm_80",
         **arg_specs: ArgSpec,
     ) -> CompilationRun:
         plan = self.plan_compile(
             output_dir,
             llvm_build_dir=llvm_build_dir,
+            cpp_lowering_driver=cpp_lowering_driver,
             cuda_arch=cuda_arch,
             **arg_specs,
         )
         return execute_compilation_plan(plan)
+
+    def compile_cached(
+        self,
+        output_dir: str | Path,
+        *,
+        llvm_build_dir: str | Path | None = None,
+        cpp_lowering_driver: str | Path | None = None,
+        cuda_arch: str = "sm_80",
+        **arg_specs: ArgSpec,
+    ) -> CachedCompilation:
+        return compile_with_cache(
+            self.capture(**arg_specs),
+            output_dir=output_dir,
+            llvm_build_dir=llvm_build_dir,
+            cpp_lowering_driver=cpp_lowering_driver,
+            cuda_arch=cuda_arch,
+        )
 
 
 def kernel(*, block_size: int) -> Callable[[Callable[..., Any]], Kernel]:
