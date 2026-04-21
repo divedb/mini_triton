@@ -1,7 +1,9 @@
 #include "dialect_parser.h"
 
+#include "dialect_ops.h"
 #include "dialect_verifier.h"
 
+#include <algorithm>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -99,10 +101,35 @@ namespace mtc_lower
                 value.op = tokens[2];
                 value.dtype = tokens[3];
 
+                if (!is_supported_value_op(value.op))
+                {
+                    throw std::runtime_error(
+                        "unsupported value op at line " + std::to_string(line_number) + ": " + value.op);
+                }
+
                 if (tokens[4] != "-")
                 {
                     value.inputs = split(tokens[4], ',');
                 }
+
+                const ValueOpSpec *op_spec = find_value_op_spec(value.op);
+                if (op_spec == nullptr)
+                {
+                    throw std::runtime_error(
+                        "missing value op spec at line " + std::to_string(line_number) + ": " + value.op);
+                }
+                if (static_cast<int>(value.inputs.size()) < op_spec->min_inputs ||
+                    static_cast<int>(value.inputs.size()) > op_spec->max_inputs)
+                {
+                    throw std::runtime_error(
+                        "invalid input count for value op '" + value.op + "' at line " +
+                        std::to_string(line_number) + ": got " + std::to_string(value.inputs.size()) +
+                        ", expected " + std::to_string(op_spec->min_inputs) +
+                        (op_spec->min_inputs == op_spec->max_inputs
+                             ? std::string()
+                             : ".." + std::to_string(op_spec->max_inputs)));
+                }
+
                 if (tokens[5] != "-")
                 {
                     const std::vector<std::string> attrs = split(tokens[5], ',');
@@ -114,6 +141,33 @@ namespace mtc_lower
                             throw std::runtime_error("invalid attribute at line " + std::to_string(line_number));
                         }
                         value.attrs.push_back({attr.substr(0, eq), attr.substr(eq + 1)});
+                    }
+                }
+
+                for (const auto &required_attr : op_spec->required_attrs)
+                {
+                    const bool present = std::any_of(
+                        value.attrs.begin(), value.attrs.end(), [&](const std::pair<std::string, std::string> &item)
+                        { return item.first == required_attr; });
+                    if (!present)
+                    {
+                        throw std::runtime_error(
+                            "missing required attribute '" + required_attr + "' for value op '" + value.op +
+                            "' at line " + std::to_string(line_number));
+                    }
+                }
+
+                for (const auto &parsed_attr : value.attrs)
+                {
+                    const bool expected = std::find(
+                                              op_spec->required_attrs.begin(),
+                                              op_spec->required_attrs.end(),
+                                              parsed_attr.first) != op_spec->required_attrs.end();
+                    if (!expected && !op_spec->required_attrs.empty())
+                    {
+                        throw std::runtime_error(
+                            "unexpected attribute '" + parsed_attr.first + "' for value op '" + value.op +
+                            "' at line " + std::to_string(line_number));
                     }
                 }
 

@@ -1,5 +1,7 @@
 #include "dialect_verifier.h"
 
+#include "dialect_ops.h"
+
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -208,6 +210,11 @@ namespace mtc_lower
                 throw std::runtime_error("value name collides with argument name: " + value.name);
             }
 
+            if (!is_supported_value_op(value.op))
+            {
+                throw std::runtime_error("unsupported value op: " + value.op);
+            }
+
             if (value.op == "program_id")
             {
                 verify_program_id(value);
@@ -231,10 +238,6 @@ namespace mtc_lower
             else if (value.op == "mul")
             {
                 verify_binary_numeric(value, "mul", arg_map, value_types);
-            }
-            else
-            {
-                throw std::runtime_error("unsupported value op: " + value.op);
             }
 
             value_types[value.name] = value.dtype;

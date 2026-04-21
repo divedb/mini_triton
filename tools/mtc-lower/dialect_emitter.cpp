@@ -1,6 +1,7 @@
 #include "dialect_emitter.h"
 
 #include "dialect_model.h"
+#include "dialect_ops.h"
 
 #include <set>
 #include <sstream>
@@ -206,6 +207,11 @@ namespace mtc_lower
 
         std::string emit_value(const DialectValue &value, const std::unordered_map<std::string, DialectArg> &arg_map)
         {
+            if (!is_supported_value_op(value.op))
+            {
+                throw std::runtime_error("unsupported value op: " + value.op);
+            }
+
             if (value.op == "program_id")
             {
                 return emit_program_id(value);
@@ -230,7 +236,7 @@ namespace mtc_lower
             {
                 return emit_mul(value);
             }
-            throw std::runtime_error("unsupported value op: " + value.op);
+            throw std::runtime_error("internal error: supported op has no emitter: " + value.op);
         }
 
         std::string emit_store(const DialectStore &store, const std::unordered_map<std::string, DialectArg> &arg_map)

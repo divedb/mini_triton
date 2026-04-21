@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -341,6 +342,121 @@ def test_compile_executes_planned_toolchain_commands(tmp_path: Path):
     assert run.plan.artifacts.optimized_mlir.exists()
     assert run.plan.artifacts.llvm_ir.exists()
     assert run.plan.artifacts.ptx.exists()
+
+
+def test_cpp_lowerer_rejects_invalid_value_input_arity(tmp_path: Path):
+    lowerer_path = Path("build") / "host" / "Release" / ("mini_triton_lower.exe" if os.name == "nt" else "mini_triton_lower")
+    if not lowerer_path.exists():
+        pytest.skip("mini_triton_lower executable is not available; build host target first")
+
+    bad_dialect = tmp_path / "bad_inputs.mtd"
+    bad_dialect.write_text(
+        "\n".join(
+            [
+                "kernel bad_kernel 64",
+                "arg x buffer float32 global",
+                "arg out buffer float32 global",
+                "arg n scalar index global",
+                "value v0 program_id index - axis=0,scope='global'",
+                "value v1 cmp_lt pred v0,n -",
+                "value v2 load float32 x,v0,v1 -",
+                "value v3 add float32 v2 -",
+                "store out v0 v3 v1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    input_mlir = tmp_path / "bad.mlir"
+    optimized_mlir = tmp_path / "bad.opt.mlir"
+    llvm_ir = tmp_path / "bad.ll"
+    ptx = tmp_path / "bad.ptx"
+
+    completed = subprocess.run(
+        [
+            str(lowerer_path),
+            "--mlir-opt",
+            "mlir-opt",
+            "--mlir-translate",
+            "mlir-translate",
+            "--llc",
+            "llc",
+            "--input-dialect",
+            str(bad_dialect),
+            "--input-mlir",
+            str(input_mlir),
+            "--optimized-mlir",
+            str(optimized_mlir),
+            "--llvm-ir",
+            str(llvm_ir),
+            "--ptx",
+            str(ptx),
+            "--cuda-arch",
+            "sm_80",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "invalid input count for value op 'add'" in completed.stderr
+
+
+def test_cpp_lowerer_rejects_missing_required_value_attribute(tmp_path: Path):
+    lowerer_path = Path("build") / "host" / "Release" / ("mini_triton_lower.exe" if os.name == "nt" else "mini_triton_lower")
+    if not lowerer_path.exists():
+        pytest.skip("mini_triton_lower executable is not available; build host target first")
+
+    bad_dialect = tmp_path / "bad_attrs.mtd"
+    bad_dialect.write_text(
+        "\n".join(
+            [
+                "kernel bad_attr_kernel 64",
+                "arg out buffer index global",
+                "value v0 program_id index - axis=0",
+                "store out v0 v0 -",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    input_mlir = tmp_path / "bad_attrs.mlir"
+    optimized_mlir = tmp_path / "bad_attrs.opt.mlir"
+    llvm_ir = tmp_path / "bad_attrs.ll"
+    ptx = tmp_path / "bad_attrs.ptx"
+
+    completed = subprocess.run(
+        [
+            str(lowerer_path),
+            "--mlir-opt",
+            "mlir-opt",
+            "--mlir-translate",
+            "mlir-translate",
+            "--llc",
+            "llc",
+            "--input-dialect",
+            str(bad_dialect),
+            "--input-mlir",
+            str(input_mlir),
+            "--optimized-mlir",
+            str(optimized_mlir),
+            "--llvm-ir",
+            str(llvm_ir),
+            "--ptx",
+            str(ptx),
+            "--cuda-arch",
+            "sm_80",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "missing required attribute 'scope' for value op 'program_id'" in completed.stderr
 
 
 def test_compile_with_real_toolchain_emits_ptx_kernel_entry(tmp_path: Path):
