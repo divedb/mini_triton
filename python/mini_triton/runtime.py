@@ -125,10 +125,23 @@ class LoadedKernel:
     function_handle: object
 
 
+@dataclass(frozen=True)
+class _KernelCacheKey:
+    ptx_path: Path
+    kernel_name: str
+    driver_id: int
+    ptx_size: int
+    ptx_mtime_ns: int
+
+
 @dataclass
 class _CudaModuleHandle:
     module: ctypes.c_void_p
     ptx_buffer: ctypes.Array[ctypes.c_char]
+
+
+_DEFAULT_DRIVER: KernelDriver | None = None
+_LOADED_KERNEL_CACHE: dict[_KernelCacheKey, LoadedKernel] = {}
 
 
 class CtypesCudaDriver:
@@ -396,20 +409,46 @@ def _load_nvcuda_library() -> object:
     )
 
 
+def clear_loaded_kernel_cache() -> None:
+    _LOADED_KERNEL_CACHE.clear()
+
+
+def _resolve_default_driver() -> KernelDriver:
+    global _DEFAULT_DRIVER
+    if _DEFAULT_DRIVER is None:
+        _DEFAULT_DRIVER = CtypesCudaDriver()
+    return _DEFAULT_DRIVER
+
+
 def load_kernel(
     ptx_path: str | Path,
     kernel_name: str,
     *,
     driver: KernelDriver | None = None,
+    use_cache: bool = True,
 ) -> LoadedKernel:
-    if driver is None:
-        driver = CtypesCudaDriver()
-
     resolved_path = Path(ptx_path).expanduser().resolve()
+    if driver is None:
+        driver = _resolve_default_driver() if use_cache else CtypesCudaDriver()
+
+    stat = resolved_path.stat()
+    cache_key = _KernelCacheKey(
+        ptx_path=resolved_path,
+        kernel_name=kernel_name,
+        driver_id=id(driver),
+        ptx_size=int(stat.st_size),
+        ptx_mtime_ns=int(stat.st_mtime_ns),
+    )
+
+    if use_cache:
+        cached = _LOADED_KERNEL_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
     ptx_text = resolved_path.read_text(encoding="utf-8")
     module_handle = driver.load_module(ptx_text)
     function_handle = driver.get_function(module_handle, kernel_name)
-    return LoadedKernel(
+    loaded = LoadedKernel(
         kernel_name=kernel_name,
         ptx_path=resolved_path,
         ptx_text=ptx_text,
@@ -417,6 +456,9 @@ def load_kernel(
         module_handle=module_handle,
         function_handle=function_handle,
     )
+    if use_cache:
+        _LOADED_KERNEL_CACHE[cache_key] = loaded
+    return loaded
 
 
 def launch_kernel(

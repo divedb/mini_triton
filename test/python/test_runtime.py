@@ -13,6 +13,7 @@ from mini_triton import (
     CudaDriverError,
     RuntimeUnavailableError,
     buffer,
+    clear_loaded_kernel_cache,
     load_kernel,
     launch_kernel,
     marshal_kernel_arguments,
@@ -135,6 +136,54 @@ def test_load_and_launch_kernel_with_injected_driver(tmp_path: Path):
         }
     ]
     assert marshaled.names == ("x", "y", "out", "n")
+
+
+def test_load_kernel_reuses_cached_module_for_same_driver(tmp_path: Path):
+    ptx_text = ".visible .entry add_kernel() { ret; }\n"
+    ptx_path = tmp_path / "kernel.ptx"
+    ptx_path.write_text(ptx_text, encoding="utf-8")
+    driver = _FakeKernelDriver()
+    clear_loaded_kernel_cache()
+
+    first = load_kernel(ptx_path, "add_kernel", driver=driver)
+    second = load_kernel(ptx_path, "add_kernel", driver=driver)
+
+    assert first is second
+    assert driver.loaded_modules == [ptx_text]
+    assert driver.requested_functions == [("module-1", "add_kernel")]
+
+
+def test_load_kernel_cache_invalidates_when_ptx_changes(tmp_path: Path):
+    ptx_path = tmp_path / "kernel.ptx"
+    ptx_path.write_text(".visible .entry add_kernel() { ret; }\n", encoding="utf-8")
+    driver = _FakeKernelDriver()
+    clear_loaded_kernel_cache()
+
+    first = load_kernel(ptx_path, "add_kernel", driver=driver)
+    ptx_path.write_text("// changed\n.visible .entry add_kernel() { ret; }\n", encoding="utf-8")
+    second = load_kernel(ptx_path, "add_kernel", driver=driver)
+
+    assert first is not second
+    assert len(driver.loaded_modules) == 2
+    assert len(driver.requested_functions) == 2
+
+
+def test_load_kernel_can_bypass_cache(tmp_path: Path):
+    ptx_text = ".visible .entry add_kernel() { ret; }\n"
+    ptx_path = tmp_path / "kernel.ptx"
+    ptx_path.write_text(ptx_text, encoding="utf-8")
+    driver = _FakeKernelDriver()
+    clear_loaded_kernel_cache()
+
+    first = load_kernel(ptx_path, "add_kernel", driver=driver, use_cache=False)
+    second = load_kernel(ptx_path, "add_kernel", driver=driver, use_cache=False)
+
+    assert first is not second
+    assert driver.loaded_modules == [ptx_text, ptx_text]
+    assert driver.requested_functions == [
+        ("module-1", "add_kernel"),
+        ("module-1", "add_kernel"),
+    ]
 
 
 class _FakeKernelDriver:
