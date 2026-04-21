@@ -30,6 +30,13 @@ def add_kernel_with_arange_step(ctx, x, y, out, n):
     out.store(idx, x.load(idx, active) + y.load(idx, active), active)
 
 
+@kernel(block_size=64)
+def mul_kernel(ctx, x, y, out, n):
+    idx = ctx.global_index()
+    active = idx < n
+    out.store(idx, x.load(idx, active) * y.load(idx, active), active)
+
+
 def test_resolve_toolchain_uses_existing_llvm_build_tree(tmp_path: Path):
     build_dir = tmp_path / "llvm-build"
     bin_dir = build_dir / "bin"
@@ -280,6 +287,36 @@ def test_cpp_lowering_plan_materializes_arange_step_dialect(tmp_path: Path):
     assert artifacts.input_dialect is not None
     dialect_text = artifacts.input_dialect.read_text(encoding="utf-8")
     assert "step=2" in dialect_text
+
+
+def test_cpp_lowering_plan_materializes_mul_dialect(tmp_path: Path):
+    build_dir = tmp_path / "llvm-build"
+    bin_dir = build_dir / "bin"
+    bin_dir.mkdir(parents=True)
+
+    for tool_name in ("mlir-opt", "mlir-translate", "llc"):
+        _write_tool(bin_dir, tool_name, "exit /b 0\n")
+
+    cpp_driver = tmp_path / ("mini_triton_lower.cmd" if os.name == "nt" else "mini_triton_lower")
+    if os.name == "nt":
+        cpp_driver.write_text("@echo off\nexit /b 0\n", encoding="utf-8")
+    else:
+        cpp_driver.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        _make_executable(cpp_driver)
+
+    plan = mul_kernel.plan_compile(
+        tmp_path / "artifacts",
+        llvm_build_dir=build_dir,
+        cpp_lowering_driver=cpp_driver,
+        x=buffer("float32"),
+        y=buffer("float32"),
+        out=buffer("float32"),
+        n=scalar("index"),
+    )
+    artifacts = plan.materialize()
+    assert artifacts.input_dialect is not None
+    dialect_text = artifacts.input_dialect.read_text(encoding="utf-8")
+    assert " mul float32 " in dialect_text
 
 
 def test_compile_executes_planned_toolchain_commands(tmp_path: Path):

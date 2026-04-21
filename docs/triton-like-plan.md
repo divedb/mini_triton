@@ -30,6 +30,7 @@ As of 2026-04-21:
 1. Phase 2 progress: `program_id(axis=0/1)` and `arange(start, end, step, scope)` are implemented through capture, MLIR emission, and C++ lowering.
 2. Phase 6 progress: runtime launch config now supports x/y/z grid and block dimensions.
 3. Phase 6 progress: runtime loaded-kernel cache now reuses module/function handles across repeated `load_kernel(...)` calls for the same PTX fingerprint and driver.
+4. Phase 5 progress: C++ dialect path now performs structural/type verification and supports `mul` lowering, with end-to-end compile validated through `mini_triton_lower`.
 
 ## Phased Roadmap
 

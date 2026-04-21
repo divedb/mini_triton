@@ -346,6 +346,12 @@ Run compile + launch with block-scope indexing (`scope="block"`):
 python examples\vector_add_block_scope.py
 ```
 
+Run compile + launch with a true 2D launch config and `program_id(axis=1)` indexing:
+
+```powershell
+python examples\vector_add_2d_axis1.py
+```
+
 Run Python tests:
 
 ```powershell

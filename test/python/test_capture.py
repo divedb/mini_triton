@@ -8,6 +8,13 @@ def add_kernel(ctx, x, y, out, n):
     out.store(idx, x.load(idx, active) + y.load(idx, active), active)
 
 
+@kernel(block_size=128)
+def mul_kernel(ctx, x, y, out, n):
+    idx = ctx.global_index()
+    active = idx < n
+    out.store(idx, x.load(idx, active) * y.load(idx, active), active)
+
+
 def test_vector_add_capture_is_deterministic():
     captured = add_kernel.capture(
         x=buffer("float32"),
@@ -34,6 +41,18 @@ def test_vector_add_capture_is_deterministic():
             ]
         )
     )
+
+
+def test_vector_mul_capture_records_mul_node():
+    captured = mul_kernel.capture(
+        x=buffer("float32"),
+        y=buffer("float32"),
+        out=buffer("float32"),
+        n=scalar("index"),
+    )
+    assert " = mul : float32 (" in captured.format()
+
+    assert "store %out[%v0] <- %v4, mask=%v1" in captured.format()
 
 
 def test_capture_requires_declared_argument_order():

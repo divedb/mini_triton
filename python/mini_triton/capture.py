@@ -23,6 +23,10 @@ class SymbolicValue:
         other_value = self.session.expect_symbolic_value(other, op_name="lt")
         return self.session.add_value("cmp_lt", "pred", [self, other_value])
 
+    def __mul__(self, other: object) -> "SymbolicValue":
+        other_value = self.session.expect_symbolic_value(other, op_name="mul")
+        return self.session.add_value("mul", self.dtype, [self, other_value])
+
     def __bool__(self) -> bool:
         raise CaptureError(
             "symbolic values cannot be converted to bool during capture; "

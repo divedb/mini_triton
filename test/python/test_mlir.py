@@ -8,6 +8,13 @@ def add_kernel(ctx, x, y, out, n):
     out.store(idx, x.load(idx, active) + y.load(idx, active), active)
 
 
+@kernel(block_size=128)
+def mul_kernel(ctx, x, y, out, n):
+    idx = ctx.global_index()
+    active = idx < n
+    out.store(idx, x.load(idx, active) * y.load(idx, active), active)
+
+
 @kernel(block_size=64)
 def add_kernel_with_arange(ctx, x, y, out, n):
     idx = ctx.arange(1, 1025)
@@ -125,3 +132,13 @@ def test_axis1_program_id_mlir_uses_y_registers():
     assert "nvvm.read.ptx.sreg.ctaid.y" in mlir_text
     assert "nvvm.read.ptx.sreg.ntid.y" in mlir_text
     assert "nvvm.read.ptx.sreg.tid.y" in mlir_text
+
+
+def test_vector_mul_mlir_emits_fmul():
+    mlir_text = mul_kernel.emit_mlir(
+        x=buffer("float32"),
+        y=buffer("float32"),
+        out=buffer("float32"),
+        n=scalar("index"),
+    )
+    assert "llvm.fmul" in mlir_text

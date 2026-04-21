@@ -95,6 +95,8 @@ class MLIRBuilder:
             return self._emit_load(value)
         if value.op == "add":
             return self._emit_add(value)
+        if value.op == "mul":
+            return self._emit_mul(value)
         raise MLIREmissionError(f"unsupported IR op: {value.op}")
 
     def _emit_arange(self, value: ValueNode) -> str:
@@ -195,6 +197,14 @@ class MLIRBuilder:
         if value.dtype == "int32":
             return f"%{value.name} = llvm.add %{lhs}, %{rhs} : i32"
         raise MLIREmissionError(f"unsupported add dtype: {value.dtype}")
+
+    def _emit_mul(self, value: ValueNode) -> str:
+        lhs, rhs = value.inputs
+        if value.dtype == "float32":
+            return f"%{value.name} = llvm.fmul %{lhs}, %{rhs} : f32"
+        if value.dtype == "int32":
+            return f"%{value.name} = llvm.mul %{lhs}, %{rhs} : i32"
+        raise MLIREmissionError(f"unsupported mul dtype: {value.dtype}")
 
     def _emit_store(self, store: StoreNode) -> str:
         buffer_spec = self._lookup_buffer_spec(store.buffer)
